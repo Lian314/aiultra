@@ -1,0 +1,11 @@
+dist/*
+!dist/AIUltra-推理档位.exe
+!dist/AIUltra-推理档位便携版.zip
+!dist/使用说明.txt
+!dist/THIRD-PARTY-NOTICES.txt
+
+# Local runtime and test artifacts
+*.log
+*.tmp
+sea-config.json
+sea-prep.blob

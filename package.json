@@ -1,0 +1,18 @@
+{
+  "name": "minimal-ai-chat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": "launcher.mjs",
+  "pkg": {
+    "assets": [
+      "index.html",
+      "vendor/marked.umd.min.js",
+      "vendor/purify.min.js"
+    ],
+    "targets": [
+      "node24-win-x64"
+    ],
+    "sea": true
+  }
+}

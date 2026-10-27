@@ -8,6 +8,6 @@ API 配置和聊天历史保存在当前浏览器的本地存储中，不会写�
 
 远程 API 地址必须使用 HTTPS；本机接口可以使用 HTTP。程序只监听本机地址。
 
-联网搜索：点击输入框旁的地球图标开关。搜索会复用 API Key，单独请求 DeepSeek 原生 Messages 搜索接口，默认地址为 https://api.deepseek.com/anthropic/v1。若服务商提供了兼容此搜索接口的地址，可在连接设置中修改“联网搜索地址”；普通 OpenAI Chat Completions 或 Responses 接口本身不提供联网搜索。
+联网搜索：点击输入框旁的地球图标开关。搜索会单独请求 DeepSeek 原生 Messages 搜索接口；“联网搜索地址”留空时跟随 API 地址，官方 DeepSeek 地址会自动使用 https://api.deepseek.com/anthropic/v1。搜索默认复用 API Key，也可以在“联网搜索密钥”中填写单独密钥。服务商必须支持 Anthropic Messages 的 web_search_20250305 工具；普通 OpenAI Chat Completions 或 Responses 接口本身不提供联网搜索。
 
 AI 回复支持 Markdown 标题、强调、列表、引用、任务列表、表格、链接、图片和代码块。为安全起见，原始 HTML 会显示为文本；不安全链接不会打开。

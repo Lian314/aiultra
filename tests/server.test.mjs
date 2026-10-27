@@ -221,6 +221,24 @@ test('runs DeepSeek native web search through an independent Messages endpoint',
   }]);
 });
 
+test('falls back to the chat API for search when no separate search address is provided', async () => {
+  upstreamRequests = [];
+  const response = await fetch(`${app}/api/search`, {
+    method: 'POST',
+    headers: { Origin: appOrigin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiUrl: `http://${host}:${upstreamPort}/v1/anthropic`,
+      apiKey: 'test-secret',
+      query: 'latest release notes'
+    })
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    sources: [{ url: 'https://example.com/article', title: 'Example article', snippet: 'Useful result excerpt.', publishedAt: 'today' }]
+  });
+  assert.equal(upstreamRequests[0].url, '/v1/anthropic/messages');
+});
+
 test('stopping a streamed request disconnects from the provider', async () => {
   upstreamDisconnects = 0;
   const response = await fetch(`${app}/api/chat`, {

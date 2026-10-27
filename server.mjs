@@ -57,6 +57,16 @@ function providerUrl(value, endpoint) {
   return base;
 }
 
+function searchApiBase(apiUrl, configuredUrl) {
+  if (typeof configuredUrl === 'string' && configuredUrl.trim()) return configuredUrl.trim();
+  let url;
+  try { url = new URL(apiUrl); }
+  catch { return apiUrl; }
+  return url.hostname === 'api.deepseek.com' || url.hostname.endsWith('.deepseek.com')
+    ? 'https://api.deepseek.com/anthropic/v1'
+    : apiUrl;
+}
+
 async function readLimited(response) {
   const reader = response.body?.getReader();
   if (!reader) return Buffer.alloc(0);
@@ -160,7 +170,7 @@ const server = createServer(async (request, response) => {
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
       thinking: { type: 'disabled' }
     } : null;
-    const upstreamUrl = providerUrl(isSearch ? body.searchApiUrl : body.apiUrl, providerPath);
+    const upstreamUrl = providerUrl(isSearch ? searchApiBase(body.apiUrl, body.searchApiUrl) : body.apiUrl, providerPath);
     const upstream = await fetch(upstreamUrl, {
       method: isChat || isSearch ? 'POST' : 'GET',
       headers: isSearch

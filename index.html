@@ -404,7 +404,8 @@
         <div class="modal-content">
           <div class="field"><label class="field-label" for="apiKey">API 密钥</label><div class="key-row"><input id="apiKey" type="password" autocomplete="off" placeholder="输入 API Key"><button class="subtle-button" id="toggleKey" type="button">显示</button></div><label class="remember-key"><input id="persistKey" type="checkbox"><span>在此浏览器保存密钥</span></label><small>默认仅在当前页面使用；保存密钥会将其写入浏览器本地存储</small></div>
           <label class="field"><span class="field-label">API 地址</span><input id="apiUrl" type="url" placeholder="https://api.example.com/v1" required><small>远程接口需使用 HTTPS；本机接口可使用 HTTP</small></label>
-          <label class="field"><span class="field-label">联网搜索地址</span><input id="searchApiUrl" type="url" placeholder="https://api.deepseek.com/anthropic/v1"><small>DeepSeek 原生搜索会使用上方 API Key，并单独请求此地址的 /messages</small></label>
+          <label class="field"><span class="field-label">联网搜索地址</span><input id="searchApiUrl" type="url" placeholder="留空则跟随 API 地址"><small>留空时跟随上方 API 地址；官方 DeepSeek 地址会自动使用 /anthropic/v1，也可以手动填写独立搜索地址</small></label>
+          <div class="field"><label class="field-label" for="searchApiKey">联网搜索密钥</label><div class="key-row"><input id="searchApiKey" type="password" autocomplete="off" placeholder="留空则复用 API 密钥"><button class="subtle-button" id="toggleSearchKey" type="button">显示</button></div><small>搜索地址和聊天地址可以使用不同密钥；DSH 账号登录产生的内部令牌不能直接填在这里</small></div>
           <label class="field"><span class="field-label">API 协议</span><select id="protocol"><option value="chat">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option></select></label>
           <div class="field"><div class="field-label"><label for="modelInput">模型 ID</label><button class="subtle-button" id="fetchModels" type="button">获取可用模型</button></div><div class="model-row"><input id="modelInput" list="modelOptions" placeholder="输入或选择模型 ID" autocomplete="off" required><button class="subtle-button" id="chooseModels" type="button" aria-haspopup="dialog" aria-controls="modelPicker" disabled>选择</button><datalist id="modelOptions"></datalist></div><small id="selectedModelsHint">也可以直接填写服务商提供的模型 ID</small></div>
           <label class="field"><span class="field-label"><span>推理强度</span><span class="reasoning-model-label" id="reasoningModelLabel"></span></span><select id="reasoning"></select><small id="reasoningHint">按模型单独保存；Default 不发送推理强度参数。</small><div class="reasoning-options-editor" id="reasoningOptionsEditor" hidden><span class="reasoning-options-editor-label">此模型可用档位</span><div class="reasoning-options-row"><input id="reasoningOptionsInput" type="text" autocomplete="off" placeholder="low, medium, high"><button class="subtle-button" id="applyReasoningOptions" type="button">应用</button></div><div class="reasoning-options-actions"><small>用逗号分隔，可自行添加或删除档位</small><button id="resetReasoningOptions" type="button">恢复建议</button></div></div></label>
@@ -435,7 +436,8 @@
       const CONFIG_KEY = 'minimal-ai-chat.config.v1';
       const THREADS_KEY = 'minimal-ai-chat.threads.v1';
       const CURRENT_KEY = 'minimal-ai-chat.current.v1';
-      const defaults = { apiKey: '', apiUrl: '', searchApiUrl: 'https://api.deepseek.com/anthropic/v1', protocol: 'chat', model: '', reasoning: '', reasoningByModel: {}, persistKey: false, webSearchEnabled: false, models: [], availableModels: [], modelContextLengths: {}, modelReasoningOptions: {}, modelSelectionVersion: 0 };
+      const defaults = { apiKey: '', searchApiKey: '', apiUrl: '', searchApiUrl: '', searchApiUrlExplicit: false, protocol: 'chat', model: '', reasoning: '', reasoningByModel: {}, persistKey: false, webSearchEnabled: false, models: [], availableModels: [], modelContextLengths: {}, modelReasoningOptions: {}, modelSelectionVersion: 0 };
+      const OFFICIAL_SEARCH_API_URL = 'https://api.deepseek.com/anthropic/v1';
       const COMMON_REASONING_OPTIONS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra', 'off'];
       const $ = (id) => document.getElementById(id);
       const volatileStorage = new Map();
@@ -463,7 +465,16 @@
       if (!state.config.modelContextLengths || typeof state.config.modelContextLengths !== 'object' || Array.isArray(state.config.modelContextLengths)) state.config.modelContextLengths = {};
       if (!state.config.reasoningByModel || typeof state.config.reasoningByModel !== 'object' || Array.isArray(state.config.reasoningByModel)) state.config.reasoningByModel = {};
       if (!state.config.modelReasoningOptions || typeof state.config.modelReasoningOptions !== 'object' || Array.isArray(state.config.modelReasoningOptions)) state.config.modelReasoningOptions = {};
-      if (!state.config.persistKey) state.config.apiKey = '';
+      const configuredSearchUrl = typeof state.config.searchApiUrl === 'string' ? state.config.searchApiUrl.trim() : '';
+      if (!state.config.searchApiUrlExplicit) {
+        const officialChatUrl = isOfficialDeepSeekUrl(state.config.apiUrl);
+        state.config.searchApiUrlExplicit = Boolean(configuredSearchUrl && (configuredSearchUrl !== OFFICIAL_SEARCH_API_URL || officialChatUrl));
+        if (!state.config.searchApiUrlExplicit) state.config.searchApiUrl = '';
+      }
+      if (!state.config.persistKey) {
+        state.config.apiKey = '';
+        state.config.searchApiKey = '';
+      }
       let modelCatalog = {
         apiUrl: state.config.apiUrl,
         protocol: state.config.protocol,
@@ -489,9 +500,24 @@
         try { const value = JSON.parse(storage.getItem(key)); return value ?? fallback; }
         catch { return fallback; }
       }
+      function isOfficialDeepSeekUrl(value) {
+        try {
+          const url = new URL(value);
+          return url.hostname === 'api.deepseek.com' || url.hostname.endsWith('.deepseek.com');
+        } catch { return false; }
+      }
+      function resolveSearchApiUrl(apiUrl, configuredUrl = '', explicit = false) {
+        const custom = String(configuredUrl || '').trim().replace(/\/+$/, '');
+        if (explicit && custom) return custom;
+        if (isOfficialDeepSeekUrl(apiUrl)) return OFFICIAL_SEARCH_API_URL;
+        return String(apiUrl || '').trim().replace(/\/+$/, '');
+      }
       function saveConfig() {
         const persisted = { ...state.config };
-        if (!persisted.persistKey) delete persisted.apiKey;
+        if (!persisted.persistKey) {
+          delete persisted.apiKey;
+          delete persisted.searchApiKey;
+        }
         storage.setItem(CONFIG_KEY, JSON.stringify(persisted));
       }
       function saveThreads() {
@@ -999,6 +1025,7 @@
       }
       function settingsFormFromConfig() {
         $('apiKey').value = state.config.apiKey || '';
+        $('searchApiKey').value = state.config.searchApiKey || '';
         $('persistKey').checked = Boolean(state.config.persistKey);
         $('apiUrl').value = state.config.apiUrl || '';
         $('searchApiUrl').value = state.config.searchApiUrl || defaults.searchApiUrl;
@@ -1347,8 +1374,8 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 apiUrl: state.config.apiUrl,
-                searchApiUrl: state.config.searchApiUrl || defaults.searchApiUrl,
-                apiKey: state.config.apiKey,
+                searchApiUrl: resolveSearchApiUrl(state.config.apiUrl, state.config.searchApiUrl, state.config.searchApiUrlExplicit),
+                apiKey: state.config.searchApiKey || state.config.apiKey,
                 query: userText
               }),
               signal: controller.signal
@@ -1494,12 +1521,18 @@
         input.type = input.type === 'password' ? 'text' : 'password';
         $('toggleKey').textContent = input.type === 'password' ? '显示' : '隐藏';
       });
+      $('toggleSearchKey').addEventListener('click', () => {
+        const input = $('searchApiKey');
+        input.type = input.type === 'password' ? 'text' : 'password';
+        $('toggleSearchKey').textContent = input.type === 'password' ? '显示' : '隐藏';
+      });
       $('settingsForm').addEventListener('submit', (event) => {
         event.preventDefault();
         const apiUrl = $('apiUrl').value.trim().replace(/\/+$/, '');
         try { new URL(apiUrl); }
         catch { showSettingsError('请输入有效的 API 地址。'); return; }
-        const searchApiUrl = $('searchApiUrl').value.trim().replace(/\/+$/, '') || defaults.searchApiUrl;
+        const searchApiUrlInput = $('searchApiUrl').value.trim().replace(/\/+$/, '');
+        const searchApiUrl = resolveSearchApiUrl(apiUrl, searchApiUrlInput, Boolean(searchApiUrlInput));
         try { new URL(searchApiUrl); }
         catch { showSettingsError('请输入有效的联网搜索地址。'); return; }
         const catalogMatches = modelCatalog.apiUrl === normalizeBase(apiUrl) && modelCatalog.protocol === $('protocol').value;
@@ -1512,8 +1545,10 @@
         }
         state.config = {
           apiKey: $('apiKey').value.trim(),
+          searchApiKey: $('searchApiKey').value.trim(),
           apiUrl,
-          searchApiUrl: $('searchApiUrl').value.trim().replace(/\/+$/, '') || defaults.searchApiUrl,
+          searchApiUrl: searchApiUrlInput,
+          searchApiUrlExplicit: Boolean(searchApiUrlInput),
           protocol: $('protocol').value,
           model: $('modelInput').value.trim(),
           reasoning: '',

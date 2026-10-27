@@ -32,7 +32,8 @@ before(async () => {
       const body = Buffer.concat(chunks).toString('utf8');
       upstreamRequests.push({ method: request.method, url: request.url, authorization: request.headers.authorization, accept: request.headers.accept, body,
         ...(request.headers['x-api-key'] ? { xApiKey: request.headers['x-api-key'] } : {}),
-        ...(request.headers['anthropic-version'] ? { anthropicVersion: request.headers['anthropic-version'] } : {}) });
+        ...(request.headers['anthropic-version'] ? { anthropicVersion: request.headers['anthropic-version'] } : {}),
+        ...(request.headers['user-agent'] && request.headers['user-agent'] !== 'node' ? { userAgent: request.headers['user-agent'] } : {}) });
       if (request.method === 'POST') {
         if (request.url === '/v1/anthropic/messages') {
           response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
@@ -215,7 +216,8 @@ test('runs DeepSeek native web search through an independent Messages endpoint',
       thinking: { type: 'disabled' }
     }),
     xApiKey: 'test-secret',
-    anthropicVersion: '2023-06-01'
+    anthropicVersion: '2023-06-01',
+    userAgent: 'deepseek-harness/0.0.1'
   }]);
 });
 

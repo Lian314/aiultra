@@ -164,7 +164,7 @@ const server = createServer(async (request, response) => {
     const upstream = await fetch(upstreamUrl, {
       method: isChat || isSearch ? 'POST' : 'GET',
       headers: isSearch
-        ? { Accept: 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': body.apiKey.trim(), Authorization: `Bearer ${body.apiKey.trim()}`, 'Content-Type': 'application/json' }
+        ? { Accept: 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': body.apiKey.trim(), Authorization: `Bearer ${body.apiKey.trim()}`, 'Content-Type': 'application/json', 'User-Agent': 'deepseek-harness/0.0.1' }
         : isChat
           ? { Accept: 'text/event-stream, application/json', Authorization: `Bearer ${body.apiKey.trim()}`, 'Content-Type': 'application/json' }
         : { Accept: 'application/json', Authorization: `Bearer ${body.apiKey.trim()}` },

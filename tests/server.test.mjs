@@ -35,6 +35,10 @@ before(async () => {
         ...(request.headers['anthropic-version'] ? { anthropicVersion: request.headers['anthropic-version'] } : {}),
         ...(request.headers['user-agent'] && request.headers['user-agent'] !== 'node' ? { userAgent: request.headers['user-agent'] } : {}) });
       if (request.method === 'POST') {
+        if (request.url === '/v1/not-found/messages') {
+          response.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Not found.' }));
+          return;
+        }
         if (request.url === '/v1/anthropic/messages') {
           response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
             content: [
@@ -221,7 +225,7 @@ test('runs DeepSeek native web search through an independent Messages endpoint',
   }]);
 });
 
-test('falls back to the chat API for search when no separate search address is provided', async () => {
+test('requires a separate search address for custom chat APIs', async () => {
   upstreamRequests = [];
   const response = await fetch(`${app}/api/search`, {
     method: 'POST',
@@ -232,11 +236,24 @@ test('falls back to the chat API for search when no separate search address is p
       query: 'latest release notes'
     })
   });
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    sources: [{ url: 'https://example.com/article', title: 'Example article', snippet: 'Useful result excerpt.', publishedAt: 'today' }]
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /独立 Messages API 搜索基址/);
+  assert.equal(upstreamRequests.length, 0);
+});
+
+test('explains when the configured search service does not expose Messages API', async () => {
+  const response = await fetch(`${app}/api/search`, {
+    method: 'POST',
+    headers: { Origin: appOrigin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiUrl: `http://${host}:${upstreamPort}/v1`,
+      searchApiUrl: `http://${host}:${upstreamPort}/v1/not-found`,
+      apiKey: 'test-secret',
+      query: 'latest release notes'
+    })
   });
-  assert.equal(upstreamRequests[0].url, '/v1/anthropic/messages');
+  assert.equal(response.status, 404);
+  assert.match((await response.json()).error, /\/v1\/not-found\/messages.*DSH Web search.*\/messages/);
 });
 
 test('stopping a streamed request disconnects from the provider', async () => {

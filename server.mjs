@@ -64,7 +64,7 @@ function searchApiBase(apiUrl, configuredUrl) {
   catch { return apiUrl; }
   return url.hostname === 'api.deepseek.com' || url.hostname.endsWith('.deepseek.com')
     ? 'https://api.deepseek.com/anthropic/v1'
-    : apiUrl;
+    : '';
 }
 
 async function readLimited(response) {
@@ -170,7 +170,12 @@ const server = createServer(async (request, response) => {
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
       thinking: { type: 'disabled' }
     } : null;
-    const upstreamUrl = providerUrl(isSearch ? searchApiBase(body.apiUrl, body.searchApiUrl) : body.apiUrl, providerPath);
+    const searchBase = isSearch ? searchApiBase(body.apiUrl, body.searchApiUrl) : '';
+    if (isSearch && !searchBase) {
+      send(response, 400, JSON.stringify({ error: '自定义 API 未提供网页搜索地址。请填写 DSH Web search 设置中的独立 Messages API 搜索基址。' }));
+      return;
+    }
+    const upstreamUrl = providerUrl(isSearch ? searchBase : body.apiUrl, providerPath);
     const upstream = await fetch(upstreamUrl, {
       method: isChat || isSearch ? 'POST' : 'GET',
       headers: isSearch
@@ -206,6 +211,9 @@ const server = createServer(async (request, response) => {
           const payload = JSON.parse(data.toString('utf8'));
           detail = typeof payload.error === 'string' ? payload.error : payload.error?.message || payload.message || '';
         } catch {}
+        if (upstream.status === 404) {
+          detail = `搜索地址 ${upstreamUrl.pathname} 返回 HTTP 404。请确认它是 DSH Web search 使用的 Messages API 基址，且支持 /messages。`;
+        }
         send(response, upstream.status, JSON.stringify({ error: detail || `DeepSeek 搜索服务返回 HTTP ${upstream.status}。` }));
         return;
       }

@@ -404,7 +404,7 @@
         <div class="modal-content">
           <div class="field"><label class="field-label" for="apiKey">API 密钥</label><div class="key-row"><input id="apiKey" type="password" autocomplete="off" placeholder="输入 API Key"><button class="subtle-button" id="toggleKey" type="button">显示</button></div><label class="remember-key"><input id="persistKey" type="checkbox"><span>在此浏览器保存密钥</span></label><small>默认仅在当前页面使用；保存密钥会将其写入浏览器本地存储</small></div>
           <label class="field"><span class="field-label">API 地址</span><input id="apiUrl" type="url" placeholder="https://api.example.com/v1" required><small>远程接口需使用 HTTPS；本机接口可使用 HTTP</small></label>
-          <label class="field"><span class="field-label">联网搜索地址</span><input id="searchApiUrl" type="url" placeholder="留空则跟随 API 地址"><small>留空时跟随上方 API 地址；官方 DeepSeek 地址会自动使用 /anthropic/v1，也可以手动填写独立搜索地址</small></label>
+          <label class="field"><span class="field-label">联网搜索地址</span><input id="searchApiUrl" type="url" placeholder="官方 DeepSeek 可留空；自定义网关请填写搜索地址"><small>官方 DeepSeek 地址会自动使用 /anthropic/v1；自定义网关需填写其 Messages API 搜索基址（可在 DSH 的 Web search 设置中查看）</small></label>
           <div class="field"><label class="field-label" for="searchApiKey">联网搜索密钥</label><div class="key-row"><input id="searchApiKey" type="password" autocomplete="off" placeholder="留空则复用 API 密钥"><button class="subtle-button" id="toggleSearchKey" type="button">显示</button></div><small>搜索地址和聊天地址可以使用不同密钥；DSH 账号登录产生的内部令牌不能直接填在这里</small></div>
           <label class="field"><span class="field-label">API 协议</span><select id="protocol"><option value="chat">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option></select></label>
           <div class="field"><div class="field-label"><label for="modelInput">模型 ID</label><button class="subtle-button" id="fetchModels" type="button">获取可用模型</button></div><div class="model-row"><input id="modelInput" list="modelOptions" placeholder="输入或选择模型 ID" autocomplete="off" required><button class="subtle-button" id="chooseModels" type="button" aria-haspopup="dialog" aria-controls="modelPicker" disabled>选择</button><datalist id="modelOptions"></datalist></div><small id="selectedModelsHint">也可以直接填写服务商提供的模型 ID</small></div>
@@ -510,7 +510,7 @@
         const custom = String(configuredUrl || '').trim().replace(/\/+$/, '');
         if (explicit && custom) return custom;
         if (isOfficialDeepSeekUrl(apiUrl)) return OFFICIAL_SEARCH_API_URL;
-        return String(apiUrl || '').trim().replace(/\/+$/, '');
+        return '';
       }
       function saveConfig() {
         const persisted = { ...state.config };
@@ -1369,12 +1369,16 @@
         setBusy(true);
         try {
           if (webSearch) {
+            const searchApiUrl = resolveSearchApiUrl(state.config.apiUrl, state.config.searchApiUrl, state.config.searchApiUrlExplicit);
+            if (!searchApiUrl) {
+              throw new Error('自定义 API 未提供网页搜索地址。请在连接设置中填写 DSH 的独立 Messages API 搜索基址。');
+            }
             const searchResponse = await fetch('/api/search', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 apiUrl: state.config.apiUrl,
-                searchApiUrl: resolveSearchApiUrl(state.config.apiUrl, state.config.searchApiUrl, state.config.searchApiUrlExplicit),
+                searchApiUrl,
                 apiKey: state.config.searchApiKey || state.config.apiKey,
                 query: userText
               }),
@@ -1533,8 +1537,10 @@
         catch { showSettingsError('请输入有效的 API 地址。'); return; }
         const searchApiUrlInput = $('searchApiUrl').value.trim().replace(/\/+$/, '');
         const searchApiUrl = resolveSearchApiUrl(apiUrl, searchApiUrlInput, Boolean(searchApiUrlInput));
-        try { new URL(searchApiUrl); }
-        catch { showSettingsError('请输入有效的联网搜索地址。'); return; }
+        if (searchApiUrl) {
+          try { new URL(searchApiUrl); }
+          catch { showSettingsError('请输入有效的联网搜索地址。'); return; }
+        }
         const catalogMatches = modelCatalog.apiUrl === normalizeBase(apiUrl) && modelCatalog.protocol === $('protocol').value;
         const savedReasoningOptions = catalogMatches
           ? { ...draftReasoningOptionsByModel }
